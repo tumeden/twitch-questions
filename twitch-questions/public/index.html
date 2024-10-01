@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Questions for JoppaVash</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            display: flex; 
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+            height: 90vh; /* Make body take up full screen height */
+        }
+        header {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 20px;
+            background-color: #007BFF;
+            padding: 15px;
+            color: white;
+            border-bottom: 3px solid #0056b3;
+        }
+        header a {
+            text-decoration: none;
+            color: #fff;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        header a:hover {
+            text-decoration: underline;
+        }
+        .container {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            width: 90%;
+            max-width: 1200px;
+            height: 80vh; /* Set the container to be 80% of the viewport height */
+        }
+        #chat, #questions {
+            flex: 1;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+        #chat {
+            border-right: 2px solid #ccc;
+        }
+        h2 {
+            margin-top: 0;
+            color: #007BFF;
+            font-size: 24px;
+            border-bottom: 2px solid #ccc;
+            padding-bottom: 10px;
+        }
+        .controls {
+            text-align: right;
+            margin-bottom: 10px;
+        }
+        .controls button {
+            cursor: pointer;
+            padding: 5px 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        .message, .question { 
+            margin: 10px 0; 
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+        }
+        .message strong, .question strong {
+            color: #007BFF;
+        }
+    </style> 
+</head>
+<body>
+
+    <!-- Header with Logs Link -->
+    <header>
+        <a href="/logs" target="_blank">View Logs</a>
+    </header>
+
+    <div class="container">
+        <div id="chat">
+            <div class="controls">
+                <button id="sortChatBtn">Sort Chat (Descending)</button>
+            </div>
+            <h2>Live Chat</h2>
+            <div id="messages"></div>
+        </div>
+        <div id="questions">
+            <div class="controls">
+                <button id="sortQuestionsBtn">Sort Questions (Descending)</button>
+            </div>
+            <h2>Questions</h2>
+            <div id="questionList"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+    
+        // Local client-side storage of messages and questions for sorting
+        let chatMessages = [];
+        let questionMessages = [];
+        let isChatDescending = true;
+        let isQuestionsDescending = true;
+    
+        // Function to check if a message already exists (by checking message content and user)
+        function messageExists(array, messageData) {
+            return array.some(msg => msg.user === messageData.user && msg.message === messageData.message);
+        }
+    
+        // Function to render chat messages based on current sort order
+        function renderMessages() {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML = ''; // Clear current messages
+    
+            // Sort and render messages based on user's choice
+            let sortedMessages = chatMessages.slice();
+            if (!isChatDescending) {
+                sortedMessages.reverse();
+            }
+    
+            sortedMessages.forEach(msg => {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('message');
+                messageElement.innerHTML = `<strong>${msg.user}:</strong> ${msg.message}`;
+                messagesDiv.appendChild(messageElement);
+            });
+        }
+    
+        // Function to render questions based on current sort order
+        function renderQuestions() {
+            const questionListDiv = document.getElementById('questionList');
+            questionListDiv.innerHTML = ''; // Clear current questions
+    
+            // Sort and render questions based on user's choice
+            let sortedQuestions = questionMessages.slice();
+            if (!isQuestionsDescending) {
+                sortedQuestions.reverse();
+            }
+    
+            sortedQuestions.forEach(q => {
+                const questionElement = document.createElement('div');
+                questionElement.classList.add('question');
+                questionElement.innerHTML = `<strong>${q.user}:</strong> ${q.message}`;
+                questionListDiv.appendChild(questionElement);
+            });
+        }
+    
+        // Function to clean up any duplicate event listeners
+        function removeAllListeners() {
+            socket.off('newMessage');
+            socket.off('newQuestion');
+        }
+    
+        // Handle connection to ensure no duplicate listeners
+        socket.on('connect', () => {
+            removeAllListeners(); // Remove any existing listeners before adding new ones
+    
+            // Handle new chat messages
+            socket.on('newMessage', (data) => {
+                // Only add the message if it doesn't already exist
+                if (!messageExists(chatMessages, data)) {
+                    chatMessages.unshift(data); // Add new messages to the beginning of the array
+                }
+                renderMessages(); // Re-render messages
+            });
+    
+            // Handle new questions
+            socket.on('newQuestion', (data) => {
+                // Only add the question if it doesn't already exist
+                if (!messageExists(questionMessages, data)) {
+                    questionMessages.unshift(data); // Add new questions to the beginning of the array
+                }
+                renderQuestions(); // Re-render questions
+            });
+        });
+    
+        // Event listener for toggling chat sorting
+        document.getElementById('sortChatBtn').addEventListener('click', () => {
+            isChatDescending = !isChatDescending;
+            document.getElementById('sortChatBtn').innerText = `Sort Chat (${isChatDescending ? 'Descending' : 'Ascending'})`;
+            renderMessages(); // Re-render messages after sorting
+        });
+    
+        // Event listener for toggling questions sorting
+        document.getElementById('sortQuestionsBtn').addEventListener('click', () => {
+            isQuestionsDescending = !isQuestionsDescending;
+            document.getElementById('sortQuestionsBtn').innerText = `Sort Questions (${isQuestionsDescending ? 'Descending' : 'Ascending'})`;
+            renderQuestions(); // Re-render questions after sorting
+        });
+    </script>
+    
+</body>
+</html>
