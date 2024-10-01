@@ -91,12 +91,10 @@ function attachListeners() {
         // Emit the message to all connected clients for live chat display
         io.emit('newMessage', { user: tags['display-name'], message: message });
 
-        // If the message contains '!question', log it to questions.txt and store in memory
-        if (message.toLowerCase().includes('!question')) {
-            const cleanMessage = message.replace(/!question/gi, '').trim();
-
-            // Log to questions.txt
-            const questionLogMessage = `[${channel}] ${tags['display-name']}: ${cleanMessage}`;
+        // Check if the message contains '!question' or if it mentions the channel user
+        if (message.toLowerCase().includes('!question') || message.toLowerCase().includes(`@${channelName.toLowerCase()}`)) {
+            // Log to questions.txt (no need to modify the message)
+            const questionLogMessage = `[${channel}] ${tags['display-name']}: ${message}`;
             fs.appendFile(questionsLogPath, questionLogMessage + '\n', err => {
                 if (err) {
                     console.error('Error writing to questions log file', err);
@@ -104,14 +102,16 @@ function attachListeners() {
             });
 
             // Add the question to the in-memory store and limit it
-            questionsStore.push({ user: tags['display-name'], message: cleanMessage });
+            questionsStore.push({ user: tags['display-name'], message: message });
             limitStore(questionsStore);  // Limit to the last 200 questions
 
             // Emit the question to all connected clients
-            io.emit('newQuestion', { user: tags['display-name'], message: cleanMessage });
+            io.emit('newQuestion', { user: tags['display-name'], message: message });
         }
     });
 }
+
+
 
 // Clean up listeners before reconnecting to prevent duplication
 client.on('reconnect', () => {
