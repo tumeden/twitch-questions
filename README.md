@@ -9,9 +9,12 @@ This is a Twitch chat logger and real-time viewer that connects to a Twitch chan
 
 - Logs all chat messages to a file.
 - Detects and logs `!question` messages separately.
+- Detects and logs @ tags for the Channel owner
 - Displays live chat and questions in a web interface.
 - Real-time sorting options for chat and questions (ascending/descending).
-- Prevents message duplication on client-side reconnects.
+- Prevents message duplication. (reduces spam)
+- Text to Speech for browsers that natively support it. 
+![image](https://github.com/user-attachments/assets/f54d004c-624a-4dce-af4d-839ed58751a5)
 
 ## Requirements
 
