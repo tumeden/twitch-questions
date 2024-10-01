@@ -3,7 +3,7 @@
 
 # Twitch Chat Logger and Viewer for Twitch
 
-This is a Twitch chat logger and real-time viewer that connects to a Twitch channel, logs chat messages, and provides a real-time web interface using `socket.io` and `express`. It can also log messages containing `!question` to a separate log file.
+This is a Twitch chat logger and real-time viewer that connects to a Twitch channel, logs chat messages, and provides a real-time web interface using `socket.io` and `express`. It can also log messages containing `!question` & @channelowner to a separate log file.
 
 ## Features
 
