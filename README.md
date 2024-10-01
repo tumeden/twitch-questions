@@ -45,7 +45,13 @@ Follow these steps to set up the logger on a new machine:
    ```bash
    npm install
 
-
 4. **Run**
    ```bash
    node bot.js
+   
+5. **View**
+
+   View in your browser
+   
+   ```bash
+   http://localhost:3000/   
