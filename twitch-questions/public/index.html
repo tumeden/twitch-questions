@@ -256,7 +256,13 @@
         document.getElementById('ttsToggleBtn').addEventListener('click', () => {
             isTTSEnabled = !isTTSEnabled;
             document.getElementById('ttsToggleBtn').innerText = isTTSEnabled ? 'Disable TTS' : 'Enable TTS';
+
+            // If TTS is disabled, immediately stop any ongoing speech
+            if (!isTTSEnabled) {
+                window.speechSynthesis.cancel();
+            }
         });
+
 
         // Load available voices when the page loads
         window.speechSynthesis.onvoiceschanged = populateVoiceList;
