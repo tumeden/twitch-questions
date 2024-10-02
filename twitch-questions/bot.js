@@ -1,5 +1,7 @@
+// /public/bot.js
+
 const tmi = require('tmi.js');
-const fs = require('fs');
+const fs = require('fs').promises; // Use promise-based fs methods
 const path = require('path');
 const express = require('express');
 const http = require('http');
@@ -11,9 +13,24 @@ const channelName = 'joppavash';
 // Define base log directory
 const logDir = path.join(__dirname, 'logs');
 
-// Ensure the 'logs' folder exists, create if it doesn't
-if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir);
+// Initialize Express server
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+
+// Serve static files (HTML/CSS)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// In-memory stores with limits
+let chatStore = [];
+let questionsStore = [];
+const MAX_STORE_SIZE = 200;
+
+// Helper function to limit memory to the last 200 entries
+function limitStore(store) {
+    if (store.length > MAX_STORE_SIZE) {
+        store.splice(0, store.length - MAX_STORE_SIZE); // Remove older items if over limit
+    }
 }
 
 // Function to get current date in YYYY-MM-DD format
@@ -22,34 +39,36 @@ function getCurrentDate() {
     return today.toISOString().split('T')[0]; // YYYY-MM-DD
 }
 
-// Create today's log directory if it doesn't exist
-const dateDir = path.join(logDir, getCurrentDate());
-if (!fs.existsSync(dateDir)) {
-    fs.mkdirSync(dateDir);
-}
-
-// Define log file paths for today's logs
-const chatLogPath = path.join(dateDir, 'chat_log.txt');
-const questionsLogPath = path.join(dateDir, 'questions.txt');
-
-// Set up Express server
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
-
-// Serve static files (HTML/CSS)
-app.use(express.static('public'));
-
-// Store chat and questions in memory, with limits
-let chatStore = [];
-let questionsStore = [];
-
-// Helper function to limit memory to the last 200 entries
-function limitStore(store, limit = 200) {
-    if (store.length > limit) {
-        store.splice(0, store.length - limit); // Remove older items if over limit
+// Asynchronously ensure directories exist
+async function ensureDirectories() {
+    try {
+        await fs.mkdir(logDir, { recursive: true });
+        const dateDir = path.join(logDir, getCurrentDate());
+        await fs.mkdir(dateDir, { recursive: true });
+        return dateDir;
+    } catch (error) {
+        console.error(`Error creating directories: ${error.message}`);
+        process.exit(1); // Exit the application if directories cannot be created
     }
 }
+
+// Asynchronously initialize log file paths
+async function initializeLogPaths() {
+    const dateDir = await ensureDirectories();
+    const chatLogPath = path.join(dateDir, 'chat_log.txt');
+    const questionsLogPath = path.join(dateDir, 'questions.txt');
+    return { chatLogPath, questionsLogPath };
+}
+
+// Initialize log paths
+let chatLogPath, questionsLogPath;
+initializeLogPaths().then(paths => {
+    chatLogPath = paths.chatLogPath;
+    questionsLogPath = paths.questionsLogPath;
+}).catch(error => {
+    console.error(`Failed to initialize log paths: ${error.message}`);
+    process.exit(1);
+});
 
 // Set up options to connect anonymously
 const client = new tmi.Client({
@@ -60,86 +79,88 @@ const client = new tmi.Client({
     connection: {
         reconnect: true,          // Enable automatic reconnection
         secure: true,             // Use secure WebSocket connection (WSS)
+        maxReconnectAttempts: 10, // Maximum number of reconnection attempts
         maxReconnectInterval: 30000, // Max interval between reconnect attempts (30 seconds)
         keepAlive: true,          // Enable TMI.js built-in keep-alive mechanism (ping/pong)
-        keepAliveInterval: 30000, // Set the ping/pong interval to 60 seconds (can be adjusted)
+        keepAliveInterval: 30000, // Set the ping/pong interval to 30 seconds
     },
     channels: [channelName]       // The channel to join
 });
 
-
 // Attach message listeners
-function attachListeners() {
-    client.on('message', (channel, tags, message, self) => {
+async function attachListeners() {
+    client.on('message', async (channel, tags, message, self) => {
         if (self) return; // Ignore messages from the bot itself
 
-        // Log message to console and chat_log.txt
-        const logMessage = `[${channel}] ${tags['display-name']}: ${message}`;
+        const displayName = tags['display-name'] || tags['username'];
+        const logMessage = `[${channel}] ${displayName}: ${message}`;
         console.log(logMessage);
 
-        // Append the message to chat_log.txt
-        fs.appendFile(chatLogPath, logMessage + '\n', err => {
-            if (err) {
-                console.error('Error writing to chat log file', err);
-            }
-        });
+        // Append the message to chat_log.txt asynchronously
+        try {
+            await fs.appendFile(chatLogPath, logMessage + '\n');
+        } catch (err) {
+            console.error('Error writing to chat log file:', err);
+        }
 
         // Add the chat message to the in-memory store and limit it
-        chatStore.push({ user: tags['display-name'], message: message });
+        chatStore.push({ user: displayName, message: message });
         limitStore(chatStore);  // Limit to the last 200 chat messages
 
         // Emit the message to all connected clients for live chat display
-        io.emit('newMessage', { user: tags['display-name'], message: message });
+        io.emit('newMessage', { user: displayName, message: message });
 
         // Check if the message contains '!question' or if it mentions the channel user
         if (message.toLowerCase().includes('!question') || message.toLowerCase().includes(`@${channelName.toLowerCase()}`)) {
-            // Log to questions.txt (no need to modify the message)
-            const questionLogMessage = `[${channel}] ${tags['display-name']}: ${message}`;
-            fs.appendFile(questionsLogPath, questionLogMessage + '\n', err => {
-                if (err) {
-                    console.error('Error writing to questions log file', err);
-                }
-            });
+            const questionLogMessage = `[${channel}] ${displayName}: ${message}`;
+            try {
+                await fs.appendFile(questionsLogPath, questionLogMessage + '\n');
+            } catch (err) {
+                console.error('Error writing to questions log file:', err);
+            }
 
             // Add the question to the in-memory store and limit it
-            questionsStore.push({ user: tags['display-name'], message: message });
+            questionsStore.push({ user: displayName, message: message });
             limitStore(questionsStore);  // Limit to the last 200 questions
 
             // Emit the question to all connected clients
-            io.emit('newQuestion', { user: tags['display-name'], message: message });
+            io.emit('newQuestion', { user: displayName, message: message });
         }
     });
 }
 
-
-
 // Clean up listeners before reconnecting to prevent duplication
 client.on('reconnect', () => {
     console.log('Reconnecting to Twitch...');
-
-    // Remove existing listeners to prevent duplication
-    client.removeAllListeners('message');
-    attachListeners(); // Reattach the message listeners
+    // No need to remove listeners here as we are using a single listener
 });
 
 // Connect to Twitch chat
-client.connect().catch(console.error);
+client.connect().catch(err => {
+    console.error('Failed to connect to Twitch:', err);
+    process.exit(1); // Exit the application if connection fails
+});
 
 // Handle disconnection events explicitly
 client.on('disconnected', (reason) => {
     console.log(`Disconnected from Twitch: ${reason}`);
 });
 
-// Initial listener attachment
-attachListeners();
-
 // Handle errors
 client.on('error', (err) => {
-    console.error('Error occurred: ', err);
+    console.error('TMI.js Error:', err);
 });
 
-// New client connection logic
+// Initial listener attachment
+attachListeners().catch(err => {
+    console.error('Error attaching listeners:', err);
+    process.exit(1); // Exit the application if listeners cannot be attached
+});
+
+// Real-time communication with clients
 io.on('connection', (socket) => {
+    console.log('New client connected');
+
     // Emit all previous chat messages to the newly connected client
     chatStore.forEach(chat => {
         socket.emit('newMessage', chat);
@@ -149,52 +170,64 @@ io.on('connection', (socket) => {
     questionsStore.forEach(q => {
         socket.emit('newQuestion', q);
     });
-});
 
-// Route to serve logs
-app.get('/logs', (req, res) => {
-    fs.readdir(logDir, (err, folders) => {
-        if (err) {
-            return res.status(500).send('Error reading log directory');
-        }
-
-        // Create a list to store the folder and file links
-        let logList = `<h1>All Log Files</h1><ul>`;
-        
-        // Iterate through each folder (date)
-        folders.forEach(folder => {
-            const folderPath = path.join(logDir, folder);
-            
-            // Check if it's a directory
-            if (fs.lstatSync(folderPath).isDirectory()) {
-                logList += `<li><strong>${folder}</strong><ul>`;
-                
-                // Read the files in the current folder
-                const files = fs.readdirSync(folderPath).filter(file => file.endsWith('.txt'));
-                
-                // Create links for each log file
-                files.forEach(file => {
-                    logList += `<li><a href="/logs/${folder}/${file}" target="_blank">${file}</a></li>`;
-                });
-                
-                logList += `</ul></li>`;
-            }
-        });
-
-        logList += `</ul>`;
-        res.send(logList);
+    socket.on('disconnect', () => {
+        console.log('Client disconnected');
     });
 });
 
-// Serve log files
-app.get('/logs/:date/:file', (req, res) => {
+// Route to serve logs
+app.get('/logs', async (req, res) => {
+    try {
+        const folders = await fs.readdir(logDir, { withFileTypes: true });
+        let logList = `<h1>All Log Files</h1><ul>`;
+
+        // Iterate through each folder (date)
+        for (const folder of folders) {
+            if (folder.isDirectory()) {
+                const folderName = folder.name;
+                const folderPath = path.join(logDir, folderName);
+                const files = await fs.readdir(folderPath);
+                const txtFiles = files.filter(file => file.endsWith('.txt'));
+
+                logList += `<li><strong>${folderName}</strong><ul>`;
+
+                // Create links for each log file
+                for (const file of txtFiles) {
+                    logList += `<li><a href="/logs/${encodeURIComponent(folderName)}/${encodeURIComponent(file)}" target="_blank">${file}</a></li>`;
+                }
+
+                logList += `</ul></li>`;
+            }
+        }
+
+        logList += `</ul>`;
+        res.send(logList);
+    } catch (err) {
+        console.error('Error reading log directory:', err);
+        res.status(500).send('Error reading log directory');
+    }
+});
+
+// Serve individual log files securely
+app.get('/logs/:date/:file', async (req, res) => {
     const { date, file } = req.params;
-    const filePath = path.join(logDir, date, file);
-    
-    // Check if file exists
-    if (fs.existsSync(filePath)) {
-        res.sendFile(filePath);
-    } else {
+
+    // Sanitize input to prevent path traversal
+    const sanitizedDate = path.basename(date);
+    const sanitizedFile = path.basename(file);
+    const filePath = path.join(logDir, sanitizedDate, sanitizedFile);
+
+    try {
+        // Check if the file exists and is indeed a file
+        const stat = await fs.stat(filePath);
+        if (stat.isFile()) {
+            res.sendFile(filePath);
+        } else {
+            res.status(404).send('File not found');
+        }
+    } catch (err) {
+        console.error('Error serving file:', err);
         res.status(404).send('File not found');
     }
 });
