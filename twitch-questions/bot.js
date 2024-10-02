@@ -8,7 +8,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 
 // Twitch channel to connect to
-const channelName = 'zackrawrr';
+const channelName = 'joppavash';
 
 // Define base log directory
 const logDir = path.join(__dirname, 'logs');
