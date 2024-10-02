@@ -14,6 +14,9 @@
     let voices = []; // Store available voices
     let currentSearchQuery = ''; // Track the active search query
 
+    // Maximum number of messages to store
+    const MAX_MESSAGES = 200;
+
     // Cache DOM elements for better performance
     const messagesDiv = document.getElementById('messages');
     const questionListDiv = document.getElementById('questionList');
@@ -40,10 +43,13 @@
      * @param {String} query - Search query for highlighting (optional)
      */
     function renderMessages(messages = chatMessages, query = '') {
+        // Ensure we only render up to MAX_MESSAGES
+        const messagesToRender = messages.slice(0, MAX_MESSAGES);
+
         messagesDiv.innerHTML = ''; // Clear current messages
 
         // Sort messages based on user's choice
-        let sortedMessages = messages.slice();
+        let sortedMessages = messagesToRender.slice();
         if (!isChatDescending) {
             sortedMessages.reverse();
         }
@@ -86,10 +92,13 @@
      * Function to render questions based on current sort order
      */
     function renderQuestions() {
+        // Ensure we only render up to MAX_MESSAGES
+        const questionsToRender = questionMessages.slice(0, MAX_MESSAGES);
+
         questionListDiv.innerHTML = ''; // Clear current questions
 
         // Sort questions based on user's choice
-        let sortedQuestions = questionMessages.slice();
+        let sortedQuestions = questionsToRender.slice();
         if (!isQuestionsDescending) {
             sortedQuestions.reverse();
         }
@@ -188,12 +197,16 @@
         // Handle new chat messages
         socket.on('newMessage', (data) => {
             if (!messageExists(chatMessages, data)) {
-                chatMessages.unshift(data); // Add new messages to the beginning of the array
+                chatMessages.unshift(data); // Add new message to the beginning
+
+                // Ensure we don't exceed the maximum number of messages
+                if (chatMessages.length > MAX_MESSAGES) {
+                    chatMessages.pop(); // Remove the oldest message
+                }
 
                 if (currentSearchQuery) {
                     // If there's an active search query, check if the new message matches
                     if (data.message.toLowerCase().includes(currentSearchQuery)) {
-                        // If it matches, re-render with the filtered messages
                         const filteredMessages = chatMessages.filter(msg => msg.message.toLowerCase().includes(currentSearchQuery));
                         renderMessages(filteredMessages, currentSearchQuery);
                     }
@@ -207,7 +220,13 @@
         // Handle new questions
         socket.on('newQuestion', (data) => {
             if (!messageExists(questionMessages, data)) {
-                questionMessages.unshift(data); // Add new questions to the beginning of the array
+                questionMessages.unshift(data); // Add new question to the beginning
+
+                // Ensure we don't exceed the maximum number of questions
+                if (questionMessages.length > MAX_MESSAGES) {
+                    questionMessages.pop(); // Remove the oldest question
+                }
+
                 renderQuestions(); // Re-render questions
                 speak(`${data.user} asks: ${data.message}`); // Speak the new question if TTS is enabled
             }
@@ -223,6 +242,14 @@
         socket.on('disconnect', (reason) => {
             console.warn('Disconnected:', reason);
             showFeedback('Disconnected from server.');
+        });
+
+        // Handle initial messages (ensure your server emits this event)
+        socket.on('initialMessages', (data) => {
+            chatMessages = data.messages.slice(0, MAX_MESSAGES); // Store only the latest 200 messages
+            questionMessages = data.questions.slice(0, MAX_MESSAGES); // Similarly for questions
+            renderMessages();
+            renderQuestions();
         });
     }
 
@@ -332,6 +359,9 @@
         if (voices.length === 0) {
             window.speechSynthesis.onvoiceschanged = populateVoiceList;
         }
+
+        // Request initial messages from the server
+        socket.emit('requestInitialMessages');
     }
 
     // Initialize the app when the DOM is fully loaded
