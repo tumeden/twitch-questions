@@ -8,7 +8,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 
 // Twitch channel to connect to
-const channelName = 'joppavash';
+const channelName = 'zackrawrr';
 
 // Define base log directory
 const logDir = path.join(__dirname, 'logs');
@@ -20,6 +20,11 @@ const io = socketIo(server);
 
 // Serve static files (HTML/CSS)
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve logs.html at /logs
+app.get('/logs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'logs.html'));
+});
 
 // In-memory stores with limits
 let chatStore = [];
@@ -69,6 +74,27 @@ initializeLogPaths().then(paths => {
     console.error(`Failed to initialize log paths: ${error.message}`);
     process.exit(1);
 });
+
+// Watch for date changes to create new log directories
+setInterval(async () => {
+    const currentDate = getCurrentDate();
+    const expectedDateDir = path.join(logDir, currentDate);
+    try {
+        await fs.access(expectedDateDir);
+        // Directory exists; no action needed
+    } catch (err) {
+        // Directory does not exist; create it and update log paths
+        try {
+            await fs.mkdir(expectedDateDir, { recursive: true });
+            chatLogPath = path.join(expectedDateDir, 'chat_log.txt');
+            questionsLogPath = path.join(expectedDateDir, 'questions.txt');
+            console.log(`Switched logging to new date directory: ${currentDate}`);
+        } catch (error) {
+            console.error(`Error creating new date directory: ${error.message}`);
+            // Depending on requirements, you might want to handle this differently
+        }
+    }
+}, 60 * 1000); // Check every minute
 
 // Set up options to connect anonymously
 const client = new tmi.Client({
@@ -161,14 +187,13 @@ attachListeners().catch(err => {
 io.on('connection', (socket) => {
     console.log('New client connected');
 
-    // Emit all previous chat messages to the newly connected client
-    chatStore.forEach(chat => {
-        socket.emit('newMessage', chat);
-    });
-
-    // Emit all previous questions to the newly connected client
-    questionsStore.forEach(q => {
-        socket.emit('newQuestion', q);
+    // Listen for initial message requests from the client
+    socket.on('requestInitialMessages', () => {
+        // Send the latest 200 messages and questions
+        socket.emit('initialMessages', {
+            messages: chatStore.slice().reverse(), // Send in chronological order (oldest first)
+            questions: questionsStore.slice().reverse()
+        });
     });
 
     socket.on('disconnect', () => {
@@ -176,40 +201,81 @@ io.on('connection', (socket) => {
     });
 });
 
-// Route to serve logs
-app.get('/logs', async (req, res) => {
+// API endpoint to list all log directories
+app.get('/api/logs/directories', async (req, res) => {
     try {
         const folders = await fs.readdir(logDir, { withFileTypes: true });
-        let logList = `<h1>All Log Files</h1><ul>`;
-
-        // Iterate through each folder (date)
-        for (const folder of folders) {
-            if (folder.isDirectory()) {
-                const folderName = folder.name;
-                const folderPath = path.join(logDir, folderName);
-                const files = await fs.readdir(folderPath);
-                const txtFiles = files.filter(file => file.endsWith('.txt'));
-
-                logList += `<li><strong>${folderName}</strong><ul>`;
-
-                // Create links for each log file
-                for (const file of txtFiles) {
-                    logList += `<li><a href="/logs/${encodeURIComponent(folderName)}/${encodeURIComponent(file)}" target="_blank">${file}</a></li>`;
-                }
-
-                logList += `</ul></li>`;
-            }
-        }
-
-        logList += `</ul>`;
-        res.send(logList);
+        const directories = folders
+            .filter(folder => folder.isDirectory())
+            .map(folder => folder.name)
+            .sort((a, b) => new Date(b) - new Date(a)); // Sort descending by date
+        res.json({ directories });
     } catch (err) {
-        console.error('Error reading log directory:', err);
-        res.status(500).send('Error reading log directory');
+        console.error('Error fetching directories:', err);
+        res.status(500).json({ error: 'Failed to fetch directories.' });
     }
 });
 
-// Serve individual log files securely
+// API endpoint to list all log files in a specific directory
+app.get('/api/logs/files/:date', async (req, res) => {
+    const { date } = req.params;
+    const sanitizedDate = path.basename(date); // Prevent path traversal
+    const dateDir = path.join(logDir, sanitizedDate);
+    
+    try {
+        const files = await fs.readdir(dateDir);
+        const txtFiles = files.filter(file => file.endsWith('.txt'));
+        res.json({ files: txtFiles });
+    } catch (err) {
+        console.error('Error fetching files:', err);
+        res.status(500).json({ error: 'Failed to fetch files.' });
+    }
+});
+
+// API endpoint to search logs
+app.get('/api/logs/search', async (req, res) => {
+    const query = req.query.q;
+    if (!query) {
+        return res.status(400).json({ error: 'No search query provided.' });
+    }
+    
+    const sanitizedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape RegExp chars
+    const regex = new RegExp(sanitizedQuery, 'i'); // Case-insensitive search
+    
+    try {
+        const folders = await fs.readdir(logDir, { withFileTypes: true });
+        let results = [];
+        
+        for (const folder of folders) {
+            if (folder.isDirectory()) {
+                const dateDir = path.join(logDir, folder.name);
+                const files = await fs.readdir(dateDir);
+                const txtFiles = files.filter(file => file.endsWith('.txt'));
+                
+                for (const file of txtFiles) {
+                    const filePath = path.join(dateDir, file);
+                    const content = await fs.readFile(filePath, 'utf-8');
+                    const lines = content.split('\n').filter(line => regex.test(line));
+                    
+                    if (lines.length > 0) {
+                        results.push({
+                            date: folder.name,
+                            file: file,
+                            matches: lines
+                        });
+                    }
+                }
+            }
+        }
+        
+        res.json({ results });
+    } catch (err) {
+        console.error('Error searching logs:', err);
+        res.status(500).json({ error: 'Failed to search logs.' });
+    }
+});
+
+// Route to serve individual log files securely
 app.get('/logs/:date/:file', async (req, res) => {
     const { date, file } = req.params;
 
