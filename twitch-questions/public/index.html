@@ -4,269 +4,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Questions for JoppaVash</title>
-    <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            display: flex; 
-            flex-direction: column;
-            align-items: center;
-            background-color: #f0f0f0;
-            margin: 0;
-            padding: 20px;
-            height: 90vh; /* Make body take up full screen height */
-        }
-        header {
-            width: 100%;
-            text-align: center;
-            margin-bottom: 20px;
-            background-color: #007BFF;
-            padding: 15px;
-            color: white;
-            border-bottom: 3px solid #0056b3;
-        }
-        header a {
-            text-decoration: none;
-            color: #fff;
-            font-weight: bold;
-            font-size: 18px;
-        }
-        header a:hover {
-            text-decoration: underline;
-        }
-        .container {
-            display: flex;
-            justify-content: space-between;
-            gap: 20px;
-            width: 90%;
-            max-width: 1200px;
-            height: 80vh; /* Set the container to be 80% of the viewport height */
-        }
-        #chat, #questions {
-            flex: 1;
-            background-color: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            overflow-y: auto;
-        }
-        #chat {
-            border-right: 2px solid #ccc;
-        }
-        h2 {
-            margin-top: 0;
-            color: #007BFF;
-            font-size: 24px;
-            border-bottom: 2px solid #ccc;
-            padding-bottom: 10px;
-        }
-        .controls {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        .controls button, .controls select {
-            cursor: pointer;
-            padding: 5px 10px;
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-        }
-        .message, .question { 
-            margin: 10px 0; 
-            padding: 10px;
-            border-radius: 5px;
-            background-color: #f9f9f9;
-            border: 1px solid #eee;
-        }
-        .message strong, .question strong {
-            color: #007BFF;
-        }
-    </style> 
+    <!-- Link to the external CSS file -->
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
     <!-- Header with Logs Link -->
     <header>
-        <a href="/logs" target="_blank">View Logs</a>
+        <nav>
+            <a href="/logs" target="_blank">View Logs</a>
+        </nav>
     </header>
 
-    <div class="container">
-        <div id="chat">
+    <!-- Feedback Message -->
+    <div id="feedback" class="feedback" role="alert" aria-live="assertive"></div>
+
+    <!-- Main Content -->
+    <main class="container">
+        <!-- Live Chat Section -->
+        <section id="chat">
             <div class="controls">
                 <button id="sortChatBtn">Sort Chat (Descending)</button>
+                <input type="text" id="searchChat" placeholder="Search Chat" aria-label="Search Chat">
             </div>
             <h2>Live Chat</h2>
-            <div id="messages"></div>
-        </div>
-        <div id="questions">
+            <div id="messages" aria-live="polite"></div>
+        </section>
+
+        <!-- Questions Section -->
+        <section id="questions">
             <div class="controls">
-                <select id="voiceSelect"></select>
-                <button id="ttsToggleBtn">Enable TTS</button>
+                <label for="voiceSelect" class="visually-hidden">Select Voice</label>
+                <select id="voiceSelect" aria-label="Select Voice" disabled></select>
+                <button id="ttsToggleBtn" aria-pressed="false">Enable TTS</button>
                 <button id="sortQuestionsBtn">Sort Questions (Descending)</button>
             </div>
             <h2>Questions / @'s</h2>
-            <div id="questionList"></div>
-        </div>
-    </div>
+            <div id="questionList" aria-live="polite"></div>
+        </section>
+    </main>
 
+    <!-- Include Socket.io client library -->
     <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
-
-        // Local client-side storage of messages and questions for sorting
-        let chatMessages = [];
-        let questionMessages = [];
-        let isChatDescending = true;
-        let isQuestionsDescending = true;
-        let isTTSEnabled = false; // TTS toggle state
-        let selectedVoice = null; // Store the selected voice for TTS
-        let voices = []; // Store available voices
-
-        // Function to check if a message already exists (by checking message content and user)
-        function messageExists(array, messageData) {
-            return array.some(msg => msg.user === messageData.user && msg.message === messageData.message);
-        }
-
-        // Function to render chat messages based on current sort order
-        function renderMessages() {
-            const messagesDiv = document.getElementById('messages');
-            messagesDiv.innerHTML = ''; // Clear current messages
-
-            // Sort and render messages based on user's choice
-            let sortedMessages = chatMessages.slice();
-            if (!isChatDescending) {
-                sortedMessages.reverse();
-            }
-
-            sortedMessages.forEach(msg => {
-                const messageElement = document.createElement('div');
-                messageElement.classList.add('message');
-                messageElement.innerHTML = `<strong>${msg.user}:</strong> ${msg.message}`;
-                messagesDiv.appendChild(messageElement);
-            });
-        }
-
-        // Function to render questions based on current sort order
-        function renderQuestions() {
-            const questionListDiv = document.getElementById('questionList');
-            questionListDiv.innerHTML = ''; // Clear current questions
-
-            // Sort and render questions based on user's choice
-            let sortedQuestions = questionMessages.slice();
-            if (!isQuestionsDescending) {
-                sortedQuestions.reverse();
-            }
-
-            sortedQuestions.forEach(q => {
-                const questionElement = document.createElement('div');
-                questionElement.classList.add('question');
-                questionElement.innerHTML = `<strong>${q.user}:</strong> ${q.message}`;
-                questionListDiv.appendChild(questionElement);
-            });
-        }
-
-        // Function to handle text-to-speech (TTS)
-        function speak(text) {
-            if (isTTSEnabled) {
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.voice = selectedVoice || voices[0]; // Use the selected voice, fallback to the first available voice
-                window.speechSynthesis.speak(utterance);
-            }
-        }
-
-        // Populate the voice select dropdown with available voices
-        function populateVoiceList() {
-            voices = window.speechSynthesis.getVoices();
-            const voiceSelect = document.getElementById('voiceSelect');
-            let defaultVoiceIndex = 0; // Default to the first voice in case Google US English isn't found
-
-            voiceSelect.innerHTML = ''; // Clear current options
-
-            voices.forEach((voice, index) => {
-                const option = document.createElement('option');
-                option.value = index;
-                option.textContent = `${voice.name} (${voice.lang})`;
-                voiceSelect.appendChild(option);
-
-                // If Google US English voice is found, set it as default
-                if (voice.name === 'Google US English') {
-                    defaultVoiceIndex = index;
-                }
-            });
-
-            // Set the selected voice to Google US English by default if available
-            voiceSelect.selectedIndex = defaultVoiceIndex;
-            selectedVoice = voices[defaultVoiceIndex]; // Set selected voice to the default
-
-            // Change selectedVoice when a new voice is chosen
-            voiceSelect.addEventListener('change', (event) => {
-                selectedVoice = voices[event.target.value];
-            });
-        }
-
-        // Function to clean up any duplicate event listeners
-        function removeAllListeners() {
-            socket.off('newMessage');
-            socket.off('newQuestion');
-        }
-
-        // Handle connection to ensure no duplicate listeners
-        socket.on('connect', () => {
-            removeAllListeners(); // Remove any existing listeners before adding new ones
-
-            // Handle new chat messages
-            socket.on('newMessage', (data) => {
-                // Only add the message if it doesn't already exist
-                if (!messageExists(chatMessages, data)) {
-                    chatMessages.unshift(data); // Add new messages to the beginning of the array
-                }
-                renderMessages(); // Re-render messages
-            });
-
-            // Handle new questions
-            socket.on('newQuestion', (data) => {
-                // Only add the question if it doesn't already exist
-                if (!messageExists(questionMessages, data)) {
-                    questionMessages.unshift(data); // Add new questions to the beginning of the array
-                }
-                renderQuestions(); // Re-render questions
-
-                // Speak the new question using TTS (if enabled)
-                speak(`${data.user} asks: ${data.message}`);
-            });
-        });
-
-        // Event listener for toggling chat sorting
-        document.getElementById('sortChatBtn').addEventListener('click', () => {
-            isChatDescending = !isChatDescending;
-            document.getElementById('sortChatBtn').innerText = `Sort Chat (${isChatDescending ? 'Descending' : 'Ascending'})`;
-            renderMessages(); // Re-render messages after sorting
-        });
-
-        // Event listener for toggling questions sorting
-        document.getElementById('sortQuestionsBtn').addEventListener('click', () => {
-            isQuestionsDescending = !isQuestionsDescending;
-            document.getElementById('sortQuestionsBtn').innerText = `Sort Questions (${isQuestionsDescending ? 'Descending' : 'Ascending'})`;
-            renderQuestions(); // Re-render questions after sorting
-        });
-
-        // Event listener for toggling TTS
-        document.getElementById('ttsToggleBtn').addEventListener('click', () => {
-            isTTSEnabled = !isTTSEnabled;
-            document.getElementById('ttsToggleBtn').innerText = isTTSEnabled ? 'Disable TTS' : 'Enable TTS';
-
-            // If TTS is disabled, immediately stop any ongoing speech
-            if (!isTTSEnabled) {
-                window.speechSynthesis.cancel();
-            }
-        });
-
-
-        // Load available voices when the page loads
-        window.speechSynthesis.onvoiceschanged = populateVoiceList;
-    </script>
+    <!-- Include external client-side JavaScript -->
+    <script src="app.js"></script>
 
 </body>
 </html>
