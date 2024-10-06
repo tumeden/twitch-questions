@@ -2,8 +2,8 @@
 
 
 # Twitch Chat Logger and Viewer for Twitch
-
-This is a Twitch chat logger and real-time viewer that connects to a Twitch channel, logs chat messages, and provides a real-time web interface using `socket.io` and `express`. It can also log messages containing `!question` & @channelowner to a separate log file.
+This is an web based application that displays real-time chat & questions for a specified twitch channel,  logs chat messages, 
+and provides a real-time web interface using `socket.io`, `tmi.js` and `express`. It can also log messages containing `!question` & `@channelowner` to a separate log file, as well as incorporates other features such as Text to Speech for Questions. 
 
 ## Features
 
@@ -15,6 +15,7 @@ This is a Twitch chat logger and real-time viewer that connects to a Twitch chan
 - Prevents message duplication. (reduces spam)
 - Text to Speech for browsers that natively support it. 
 ![image](https://github.com/user-attachments/assets/f54d004c-624a-4dce-af4d-839ed58751a5)
+![image](https://github.com/user-attachments/assets/b97fd239-0d37-409e-b311-7c2093a657d1)
 
 ## Requirements
 
