@@ -3,16 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Questions for JoppaVash</title>
+    <title>Twitch Questions</title>
     <!-- Link to the external CSS file -->
     <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
 
-    <!-- Header with Logs Link -->
+    <!-- Header with Professional Navigation Menu -->
     <header>
-        <nav>
-            <a href="/logs" target="_blank">View Logs</a>
+        <nav class="navbar">
+            <div class="navbar-brand">
+                <a href="#">Twitch-Questions</a>
+            </div>
+            <!-- Navigation Menu with ID for Accessibility -->
+            <ul class="navbar-menu" id="navbar-menu">
+                <li>
+                    <label class="toggle-section-label">
+                        <input type="checkbox" class="toggle-section" data-target="chat" checked>
+                        Live Chat
+                    </label>
+                </li>
+                <li>
+                    <label class="toggle-section-label">
+                        <input type="checkbox" class="toggle-section" data-target="questions" checked>
+                        Questions
+                    </label>
+                </li>
+                <li><a href="/logs" target="_blank">View Logs</a></li>
+                <!-- Add more menu items here as needed -->
+            </ul>
+            <!-- Hamburger Toggle Button for Mobile -->
+            <button class="navbar-toggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navbar-menu">
+                <i class="fas fa-bars"></i>
+            </button>
         </nav>
     </header>
 
@@ -22,32 +47,63 @@
     <!-- Main Content -->
     <main class="container">
         <!-- Live Chat Section -->
-        <section id="chat">
-            <div class="controls">
-                <button id="sortChatBtn">Sort Chat (Descending)</button>
-                <input type="text" id="searchChat" placeholder="Search Chat" aria-label="Search Chat">
+        <section id="chat" class="collapsible-section">
+            <div class="section-header">
+                <h2>Live Chat</h2>
+                <div class="section-actions">
+                    <button class="collapse-btn" aria-expanded="true" aria-label="Collapse Section">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                    <button class="hide-btn" aria-label="Hide Section">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </div>
-            <h2>Live Chat</h2>
-            <div id="messages" aria-live="polite"></div>
+            <div class="section-content">
+                <div class="controls">
+                    <button id="sortChatBtn">Sort Chat (Descending)</button>
+                    <input type="text" id="searchChat" placeholder="Search Chat" aria-label="Search Chat">
+                </div>
+                <div id="messages" aria-live="polite"></div>
+            </div>
         </section>
 
+        <!-- Resizer -->
+        <div class="resizer" tabindex="0" aria-label="Resize Sections" role="separator" aria-orientation="vertical"></div>
+
         <!-- Questions Section -->
-        <section id="questions">
-            <div class="controls">
-                <label for="voiceSelect" class="visually-hidden">Select Voice</label>
-                <select id="voiceSelect" aria-label="Select Voice" disabled></select>
-                <button id="ttsToggleBtn" aria-pressed="false">Enable TTS</button>
-                <button id="sortQuestionsBtn">Sort Questions (Descending)</button>
+        <section id="questions" class="collapsible-section">
+            <div class="section-header">
+                <h2>Questions / @'s</h2>
+                <div class="section-actions">
+                    <button class="collapse-btn" aria-expanded="true" aria-label="Collapse Section">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                    <button class="hide-btn" aria-label="Hide Section">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </div>
-            <h2>Questions / @'s</h2>
-            <div id="questionList" aria-live="polite"></div>
+            <div class="section-content">
+                <div class="controls">
+                    <label for="voiceSelect" class="visually-hidden">Select Voice</label>
+                    <select id="voiceSelect" aria-label="Select Voice" disabled></select>
+                    <button id="ttsToggleBtn" aria-pressed="false">Enable TTS</button>
+                    <button id="sortQuestionsBtn">Sort Questions (Descending)</button>
+                </div>
+                <div id="questionList" aria-live="polite"></div>
+            </div>
         </section>
+        
+        <!-- Add more sections here as needed -->
     </main>
 
     <!-- Include Socket.io client library -->
     <script src="/socket.io/socket.io.js"></script>
     <!-- Include external client-side JavaScript -->
     <script src="app.js"></script>
+    <!-- Include JavaScript for navigation, collapsible sections, hide/show, and resizable sections -->
+    <script src="scripts.js"></script>
 
 </body>
 </html>

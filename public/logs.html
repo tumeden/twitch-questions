@@ -170,33 +170,48 @@
             const searchInput = document.getElementById('searchInput');
             const searchResults = document.getElementById('searchResults');
             const spinner = document.getElementById('spinner');
-    
+
             let selectedDirectory = null;
-    
+
             // Initialize Bootstrap tooltips
             const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
             const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
               return new bootstrap.Tooltip(tooltipTriggerEl)
             })
-    
+
             // Show loading spinner
             function showSpinner() {
                 spinner.style.display = 'flex';
             }
-    
+
             // Hide loading spinner
             function hideSpinner() {
                 spinner.style.display = 'none';
             }
-    
-            // Fetch and display log directories
+
+            // Fetch and display log directories with at least one file, limited to 10 most recent
             async function fetchDirectories() {
                 showSpinner();
                 try {
                     const response = await fetch('/api/logs/directories');
                     if (!response.ok) throw new Error('Failed to fetch directories.');
                     const data = await response.json();
-                    populateDirectories(data.directories);
+                    const directories = data.directories;
+
+                    const directoriesWithFiles = [];
+                    // Iterate through directories and check if they have files
+                    for (const dir of directories) {
+                        const filesResponse = await fetch(`/api/logs/files/${encodeURIComponent(dir)}`);
+                        if (filesResponse.ok) {
+                            const filesData = await filesResponse.json();
+                            if (filesData.files && filesData.files.length > 0) {
+                                directoriesWithFiles.push(dir);
+                                if (directoriesWithFiles.length >= 10) break; // Limit to 10 directories
+                            }
+                        }
+                    }
+
+                    populateDirectories(directoriesWithFiles);
                 } catch (err) {
                     console.error('Error fetching directories:', err);
                     directoriesList.innerHTML = '<li class="list-group-item text-danger">🚫 Failed to load directories.</li>';
@@ -204,7 +219,7 @@
                     hideSpinner();
                 }
             }
-    
+
             // Populate directories in the UI
             function populateDirectories(directories) {
                 directoriesList.innerHTML = '';
@@ -221,20 +236,20 @@
                     directoriesList.appendChild(li);
                 });
             }
-    
+
             // Handle directory selection
             async function selectDirectory(dir, listItem) {
                 // Highlight selected directory
                 Array.from(directoriesList.children).forEach(li => li.classList.remove('active'));
                 listItem.classList.add('active');
-    
+
                 selectedDirectory = dir;
                 await fetchFiles(dir);
                 logContent.textContent = '📌 Select a log file to view its content.';
                 searchResults.innerHTML = ''; // Clear previous search results
             }
-    
-            // Fetch and display log files for a selected directory
+
+            // Fetch and display log files for a selected directory, limited to 10 most recent
             async function fetchFiles(dir) {
                 showSpinner();
                 try {
@@ -249,20 +264,22 @@
                     hideSpinner();
                 }
             }
-    
-            // Populate files in the UI
+
+            // Populate files in the UI, limited to 10 most recent
             function populateFiles(files) {
                 filesList.innerHTML = '';
                 if (files.length === 0) {
                     filesList.innerHTML = '<li class="list-group-item">📭 No log files available.</li>';
                     return;
                 }
-                files.forEach(file => {
+                // Assuming files are sorted with most recent first; if not, sort them here
+                const recentFiles = files.slice(0, 10); // Limit to 10 files
+                recentFiles.forEach(file => {
                     const li = document.createElement('li');
                     li.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
                     li.textContent = file;
                     li.setAttribute('role', 'button');
-    
+
                     // Create a download button with tooltip
                     const downloadBtn = document.createElement('button');
                     downloadBtn.className = 'icon-button';
@@ -280,17 +297,17 @@
                         e.stopPropagation(); // Prevent triggering the file click event
                         window.open(`/logs/${encodeURIComponent(selectedDirectory)}/${encodeURIComponent(file)}`, '_blank');
                     });
-    
+
                     li.addEventListener('click', () => fetchLogContent(selectedDirectory, file));
                     li.appendChild(downloadBtn);
-    
+
                     // Initialize Bootstrap tooltip for download button
                     new bootstrap.Tooltip(downloadBtn);
-    
+
                     filesList.appendChild(li);
                 });
             }
-    
+
             // Fetch and display log content for a selected file
             async function fetchLogContent(dir, file) {
                 showSpinner();
@@ -306,7 +323,7 @@
                     hideSpinner();
                 }
             }
-    
+
             // Handle search input
             const handleSearch = debounce(async (e) => {
                 const query = e.target.value.trim();
@@ -314,7 +331,7 @@
                     searchResults.innerHTML = '';
                     return;
                 }
-    
+
                 showSpinner();
                 try {
                     const response = await fetch(`/api/logs/search?q=${encodeURIComponent(query)}`);
@@ -328,26 +345,26 @@
                     hideSpinner();
                 }
             }, 500); // 500ms debounce
-    
+
             // Display search results in the UI
             function displaySearchResults(results, query) {
                 if (results.length === 0) {
                     searchResults.innerHTML = `<p>No results found for "<strong>${query}</strong>".</p>`;
                     return;
                 }
-    
+
                 const accordion = document.createElement('div');
                 accordion.className = 'accordion';
                 accordion.id = 'searchResultsAccordion';
-    
+
                 results.forEach((result, index) => {
                     const accordionItem = document.createElement('div');
                     accordionItem.className = 'accordion-item';
-    
+
                     const header = document.createElement('h2');
                     header.className = 'accordion-header';
                     header.id = `heading${index}`;
-    
+
                     const button = document.createElement('button');
                     button.className = 'accordion-button collapsed';
                     button.type = 'button';
@@ -356,44 +373,44 @@
                     button.setAttribute('aria-expanded', 'false');
                     button.setAttribute('aria-controls', `collapse${index}`);
                     button.innerHTML = `<strong>${result.date}</strong> - ${result.file}`;
-    
+
                     header.appendChild(button);
                     accordionItem.appendChild(header);
-    
+
                     const collapse = document.createElement('div');
                     collapse.id = `collapse${index}`;
                     collapse.className = 'accordion-collapse collapse';
                     collapse.setAttribute('aria-labelledby', `heading${index}`);
                     collapse.setAttribute('data-bs-parent', '#searchResultsAccordion');
-    
+
                     const body = document.createElement('div');
                     body.className = 'accordion-body';
-    
+
                     // Highlight search terms in the matched lines
                     const highlightedMatches = result.matches.map(line => highlightTerms(line, query)).join('\n');
                     body.innerHTML = `<pre>${highlightedMatches}</pre>`;
-    
+
                     collapse.appendChild(body);
                     accordionItem.appendChild(collapse);
-    
+
                     accordion.appendChild(accordionItem);
                 });
-    
+
                 searchResults.innerHTML = '';
                 searchResults.appendChild(accordion);
             }
-    
+
             // Highlight search terms within a text
             function highlightTerms(text, term) {
                 const regex = new RegExp(`(${escapeRegExp(term)})`, 'gi');
                 return text.replace(regex, '<mark>$1</mark>');
             }
-    
+
             // Escape RegExp special characters in a string
             function escapeRegExp(string) {
                 return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             }
-    
+
             // Debounce function to limit the rate at which a function can fire.
             function debounce(func, wait) {
                 let timeout;
@@ -402,10 +419,10 @@
                     timeout = setTimeout(() => func.apply(this, args), wait);
                 };
             }
-    
+
             // Initialize the logs page by fetching directories
             fetchDirectories();
-    
+
             // Attach search event listener
             searchInput.addEventListener('input', handleSearch);
         });
